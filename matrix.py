@@ -177,19 +177,6 @@ def main():
     running = True
     while running:
         clock.tick()
-        print(clock.get_fps())
-
-        # trials:
-        # 1: 40 fps
-        # 2: 50 fps
-        # 3: 80 fps
-        # 4: 90 fps
-
-        # PC #2 trials
-        # 1: 48 fps (trial #4 equiv)
-        # 2: 60 fps
-        # 3: 74 fps
-        # 4: 90 fps
 
         for event in pygame.event.get():
             if event.type == pygame.VIDEORESIZE:
