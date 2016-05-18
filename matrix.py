@@ -6,6 +6,7 @@ from itertools import product
 from os.path import join
 from random import randint, choice, random
 from threading import Event
+from operator import add
 
 import pygame
 
@@ -15,7 +16,7 @@ from animation import Animation, Task
 charset = """abcdefghijklmnopqrstuvwxzy0123456789$+-*/=%"'#&_(),.;:?!\|{}<>[]^~"""
 font_name = join('resources', 'matrix code nfi.otf')
 font_size = 22
-screen_size = 640, 480
+screen_size = 1280, 1080
 screen_needs_redraw = Event()
 glyph_width = 14
 glyph_height = 16
@@ -24,7 +25,10 @@ grid_spacing_y = 2
 
 
 class Glyph(pygame.sprite.Sprite):
-    pass
+    value = 0
+    pos = 0, 0
+    image = None
+    char = None
 
 
 class AnimationGroup(object):
@@ -66,6 +70,7 @@ class XYGroup(object):
 
 
 streamers = 0
+logo = None
 
 
 def main():
@@ -77,13 +82,14 @@ def main():
     grid = XYGroup()
     cache = dict()
     frame_number = 0
-    save_to_disk = 0
+    save_to_disk = 1
 
     def render_glyph(font, glyph):
         color = calc_color(glyph.value)
         char = glyph.char
         try:
             return cache[(char, color)]
+
         except KeyError:
             image = font.render(char, 1, color)
             image = pygame.transform.smoothscale(image, (glyph_width, glyph_height))
@@ -147,16 +153,20 @@ def main():
         return pygame.display.set_mode((width, height), pygame.RESIZABLE)
 
     def init_group(width, height):
+        global logo
         animations.empty()
         tasks.add(Task(update_grid, 16, -1))
 
         cell_x = glyph_width + grid_spacing_x
         cell_y = glyph_height + grid_spacing_y
-        width = int(width // cell_x)
-        height = int(height // cell_y)
+        cell_width = int(width // cell_x)
+        cell_height = int(height // cell_y)
 
-        data = [[None] * width for i in range(height)]
-        for y, x in product(range(height), range(width)):
+        logo = pygame.image.load(join('resources', 'python.png')).convert_alpha()
+        logo = pygame.transform.smoothscale(logo, (width, height))
+
+        data = [[None] * cell_width for i in range(cell_height)]
+        for y, x in product(range(cell_height), range(cell_width)):
             glyph = new_glyph(font)
             glyph.pos = x * cell_x, y * cell_y
             data[y][x] = glyph
@@ -190,6 +200,9 @@ def main():
         except ZeroDivisionError:
             continue
 
+        if save_to_disk:
+            td = 16
+
         animations.update(td)
         tasks.update(td)
 
@@ -206,6 +219,7 @@ def main():
 
         screen.fill((0, 0, 0))
         grid.draw(screen)
+        screen.blit(logo, (0, 0), None, pygame.BLEND_RGBA_MULT)
 
         if save_to_disk:
             filename = "snapshot%05d.tga" % frame_number
