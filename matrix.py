@@ -82,7 +82,7 @@ def main():
     grid = XYGroup()
     cache = dict()
     frame_number = 0
-    save_to_disk = 1
+    save_to_disk = 0
 
     def render_glyph(font, glyph):
         color = calc_color(glyph.value)
