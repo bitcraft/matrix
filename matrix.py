@@ -176,8 +176,7 @@ def main():
     running = True
     while running:
         if not save_to_disk:
-            clock.tick()
-            print(clock.get_fps())
+            clock.tick(60)
 
         for event in pygame.event.get():
             if event.type == pygame.VIDEORESIZE:
