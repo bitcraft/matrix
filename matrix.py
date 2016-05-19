@@ -17,9 +17,9 @@ glyph_width = 14
 glyph_height = 16
 grid_spacing_x = 2
 grid_spacing_y = 2
-streamers = 0
 logo = None
 computed_values = list()
+max_streamers = 0
 
 
 class Glyph(pygame.sprite.Sprite):
@@ -28,7 +28,7 @@ class Glyph(pygame.sprite.Sprite):
     image = None
     char = None
     ttl = 0
-    char_index = 0
+    index = 0
 
 
 class XYGroup(object):
@@ -38,7 +38,7 @@ class XYGroup(object):
 
     @property
     def active_sprites(self):
-        return (i for i in self.sprites if i.value)
+        return (i for i in self.sprites if i.ttl < len(computed_values))
 
     def draw(self, surface):
         for sprite in self.active_sprites:
@@ -48,7 +48,6 @@ class XYGroup(object):
 def main():
     # singletons, kinda
     global screen_size
-    max_streamers = 30
     grid = XYGroup()
     cache = list()
     frame_number = 0
@@ -70,56 +69,65 @@ def main():
 
     def new_glyph(font):
         glyph = Glyph()
-        glyph.value = choice(computed_values)
+        glyph.ttl = randrange(len(computed_values))
         glyph.index = randrange(len(charset))
         glyph.image = get_glyph_image(glyph)
         return glyph
 
     def burn_glyph(glyph):
         glyph.ttl = 0
-        glyph.value = 1
-        x = glyph.pos[0] // (glyph_width + grid_spacing_x)
-        y = glyph.pos[1] // (glyph_height + grid_spacing_y)
-        burn_set.add((x, y, glyph))
+        glyph.image = get_glyph_image(glyph)
+        burn_set.add(glyph)
 
     def update_grid():
         for glyph in grid.active_sprites:
             if random() > .9:
                 glyph.index = randrange(len(charset))
             glyph.ttl += 1
-            glyph.value = computed_values[glyph.ttl]
-            glyph.image = get_glyph_image(glyph)
+            if glyph.ttl == len(computed_values):
+                glyph.image = None
+            else:
+                glyph.image = get_glyph_image(glyph)
 
-        global streamers
         old_set = burn_set.copy()
         to_remove = set()
-        for token in old_set:
-            x, y, glyph = token
-            if glyph.value < .85:
-                to_remove.add(token)
+        for glyph in old_set:
+            value = computed_values[glyph.ttl]
+            if value < .85:
+                to_remove.add(glyph)
+                x = glyph.pos[0] // (glyph_width + grid_spacing_x)
+                y = glyph.pos[1] // (glyph_height + grid_spacing_y)
                 try:
                     new = grid.layout[y + 1][x]
                     burn_glyph(new)
                 except IndexError:
-                    streamers -= 1
+                    pass
+            elif not glyph.image:
+                to_remove.add(glyph)
 
         burn_set.difference_update(to_remove)
 
-        while not (streamers > max_streamers or random() > .5):
+        current = len(burn_set)
+        ratio = min(1, (float(current) / max_streamers / 2 ))
+        if current < max_streamers and random() > ratio:
             glyph = choice(grid.layout[0])
             burn_glyph(glyph)
-            streamers += 1
 
     def init_screen(width, height):
         return pygame.display.set_mode((width, height), pygame.RESIZABLE)
 
     def init_group(width, height):
         global logo
+        global max_streamers
+
+        burn_set.clear()
 
         cell_x = glyph_width + grid_spacing_x
         cell_y = glyph_height + grid_spacing_y
         cell_width = int(width // cell_x)
         cell_height = int(height // cell_y)
+
+        max_streamers = int((cell_width * cell_height) / 10)
 
         logo = pygame.image.load(join('resources', 'python.png')).convert_alpha()
         logo = pygame.transform.smoothscale(logo, (width, height))
@@ -176,7 +184,7 @@ def main():
 
     running = True
     while running:
-        clock.tick()
+        clock.tick(60)
 
         for event in pygame.event.get():
             if event.type == pygame.VIDEORESIZE:
