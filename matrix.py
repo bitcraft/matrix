@@ -25,201 +25,195 @@ import pygame
 # Configuration
 charset = """abcdefghijklmnopqrstuvwxzy0123456789$+-*/=%"'#&_(),.;:?!\|{}<>[]^~"""
 font_name = join('resources', 'matrix code nfi.otf')
+background = join('resources', 'python.png')
 font_size = 32
 screen_size = 640, 480
 glyph_width = 14
 glyph_height = 16
 grid_spacing_x = 2
 grid_spacing_y = 2
-logo = None
+streamers = 0
 computed_values = list()
+layout = list()
+glyphs = list()
+burn_set = set()
 max_streamers = 0
+cache = list()
+save_to_disk = 0
+logo = None
 
 
-class Glyph(pygame.sprite.Sprite):
-    value = 0
+class Glyph(object):
     pos = 0, 0
-    image = None
-    char = None
     ttl = 0
     index = 0
 
 
-class XYGroup(object):
-    def __init__(self):
-        self.layout = list()
-        self.sprites = list()
-
-    @property
-    def active_sprites(self):
-        return (i for i in self.sprites if i.ttl < len(computed_values))
-
-    def draw(self, surface):
-        for sprite in self.active_sprites:
-            surface.blit(sprite.image, sprite.pos)
+def calc_color(value):
+    value *= 255.
+    if value > 190:
+        value1 = int(round(value))
+        value2 = int((value * 255) / 300)
+        return value2, value1, value2
+    else:
+        value1 = int((value * 255.) / 300.)
+        value2 = int((value * 255) / 800)
+        return value2, value1, value2
 
 
-def main():
-    # singletons, kinda
+def burn_glyph(glyph):
+    glyph.ttl = len(computed_values) - 1
+    burn_set.add(glyph)
+
+
+def update_burners():
+    # go through the bright streamers
+    old_set = burn_set.copy()
+    to_remove = set()
+    for glyph in old_set:
+        value = computed_values[glyph.ttl]
+        if value < .85:
+            to_remove.add(glyph)
+            x = glyph.pos[0] // (glyph_width + grid_spacing_x)
+            y = glyph.pos[1] // (glyph_height + grid_spacing_y)
+            try:
+                new = layout[y + 1][x]
+                burn_glyph(new)
+            except IndexError:
+                pass
+        elif not glyph.ttl:
+            to_remove.add(glyph)
+
+    # remove the cells that are fading
+    burn_set.difference_update(to_remove)
+
+    # add new glyphs to make up for lost ones
+    # using random in this way prevents horizontal lines
+    current = len(burn_set)
+    ratio = min(1, (float(current) / max_streamers / 2))
+    if current < max_streamers and random() > ratio:
+        glyph = choice(layout[0])
+        burn_glyph(glyph)
+
+
+def init_screen(width, height):
     global screen_size
-    grid = XYGroup()
-    cache = list()
-    frame_number = 0
-    save_to_disk = 0
 
-    def get_glyph_image(glyph):
-        return cache[glyph.index][glyph.ttl]
+    screen_size = width, height
+    return pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 
-    def calc_color(value):
-        value *= 255.
-        if value > 190:
-            value = int(round(value))
-            value2 = int((value * 255) / 300)
-            return value2, value, value2
-        else:
-            value2 = int((value * 255) / 800)
-            value = int((value * 255.) / 300.)
-            return value2, value, value2
 
-    def new_glyph(font):
+def init_grid(width, height):
+    global max_streamers
+    global glyphs
+    global layout
+    global logo
+
+    logo = pygame.image.load(background).convert_alpha()
+    logo = pygame.transform.smoothscale(logo, screen_size)
+    cell_width = glyph_width + grid_spacing_x
+    cell_height = glyph_height + grid_spacing_y
+    grid_width = width // cell_width
+    grid_height = height // cell_height
+    max_streamers = int((grid_width * grid_height) / 10)
+
+    layout = [[None] * grid_width for i in range(grid_height)]
+    for y, x in product(range(grid_height), range(grid_width)):
         glyph = Glyph()
         glyph.ttl = randrange(len(computed_values))
         glyph.index = randrange(len(charset))
-        glyph.image = get_glyph_image(glyph)
-        return glyph
+        glyph.pos = x * cell_width, y * cell_height
+        layout[y][x] = glyph
+    glyphs = [i for i in chain.from_iterable(layout)]
 
-    def burn_glyph(glyph):
-        glyph.ttl = 0
-        glyph.image = get_glyph_image(glyph)
-        burn_set.add(glyph)
 
-    def update_grid():
-        for glyph in grid.active_sprites:
-            if random() > .9:
-                glyph.index = randrange(len(charset))
-            glyph.ttl += 1
-            if glyph.ttl == len(computed_values):
-                glyph.image = None
-            else:
-                glyph.image = get_glyph_image(glyph)
-
-        old_set = burn_set.copy()
-        to_remove = set()
-        for glyph in old_set:
-            value = computed_values[glyph.ttl]
-            if value < .85:
-                to_remove.add(glyph)
-                x = glyph.pos[0] // (glyph_width + grid_spacing_x)
-                y = glyph.pos[1] // (glyph_height + grid_spacing_y)
-                try:
-                    new = grid.layout[y + 1][x]
-                    burn_glyph(new)
-                except IndexError:
-                    pass
-            elif not glyph.image:
-                to_remove.add(glyph)
-
-        burn_set.difference_update(to_remove)
-
-        current = len(burn_set)
-        ratio = min(1, (float(current) / max_streamers / 2 ))
-        if current < max_streamers and random() > ratio:
-            glyph = choice(grid.layout[0])
-            burn_glyph(glyph)
-
-    def init_screen(width, height):
-        return pygame.display.set_mode((width, height), pygame.RESIZABLE)
-
-    def init_group(width, height):
-        global logo
-        global max_streamers
-
-        burn_set.clear()
-
-        cell_x = glyph_width + grid_spacing_x
-        cell_y = glyph_height + grid_spacing_y
-        cell_width = int(width // cell_x)
-        cell_height = int(height // cell_y)
-
-        max_streamers = int((cell_width * cell_height) / 10)
-
-        logo = pygame.image.load(join('resources', 'python.png')).convert_alpha()
-        logo = pygame.transform.smoothscale(logo, (width, height))
-
-        data = [[None] * cell_width for i in range(cell_height)]
-        for y, x in product(range(cell_height), range(cell_width)):
-            glyph = new_glyph(font)
-            glyph.pos = x * cell_x, y * cell_y
-            data[y][x] = glyph
-            if glyph.value > .95:
-                burn_glyph(glyph)
-
-        grid.sprites = [i for i in chain.from_iterable(data)]
-        grid.layout = data
-
-    pygame.init()
-    pygame.font.init()
-
+def generate_images(font):
+    # generate a scanline image to create scanline effect
     scanline = pygame.Surface((glyph_width, glyph_height), pygame.SRCALPHA)
     for y in range(0, glyph_height, 2):
         pygame.draw.line(scanline, (0, 0, 0, 128), (0, y), (glyph_width, y))
 
-    time = 0.
-    duration = 5000.
-    while 1:
-        a = 1
-        b = 0
-        prog = min(1., time / duration)
-        p = prog - 1.0
-        t = sqrt(1.0 - p * p)
-        value = (a * (1. - t)) + (b * t)
-        computed_values.append(value)
-        time += 16
-        if prog >= 1:
-            break
-
-    screen = init_screen(*screen_size)
-    font = pygame.font.Font(font_name, font_size)
-    for index, char in enumerate(charset):
+    # render all characters a head of time
+    for char in charset:
         chars = list()
         cache.append(chars)
         for value in computed_values:
             color = calc_color(value)
-            image = font.render(char, 1, color)
-            image = pygame.transform.smoothscale(image, (glyph_width, glyph_height))
-            image.blit(scanline, (0, 0))
-            back = pygame.Surface(image.get_size())
-            back.blit(image, (0, 0))
-            chars.append(back)
+            temp = font.render(char, 1, color)
+            temp = pygame.transform.smoothscale(temp, (glyph_width, glyph_height))
+            temp.blit(scanline, (0, 0))
+            image = pygame.Surface(temp.get_size())
+            image.blit(temp, (0, 0))
+            chars.append(image)
 
-    burn_set = set()
-    init_group(*screen_size)
+
+def compute_curve():
+    # compute the color curve for the streamers
+    time = 0.
+    duration = 5000.
+    prog = 0
+    while prog < 1:
+        prog = min(1., time / duration)
+        p = prog - 1.0
+        value = 1. - sqrt(1.0 - p * p)
+        computed_values.insert(0, value)
+        time += 16
+
+
+def main():
+    pygame.init()
+    pygame.font.init()
+
+    screen = init_screen(*screen_size)
+    font = pygame.font.Font(font_name, font_size)
     clock = pygame.time.Clock()
 
+    compute_curve()
+    generate_images(font)
+    init_grid(*screen_size)
+
+    frame_number = 0
     running = True
     while running:
-        clock.tick(60)
+        if not save_to_disk:
+            clock.tick()
+            print(clock.get_fps())
 
         for event in pygame.event.get():
             if event.type == pygame.VIDEORESIZE:
                 if not screen_size == (event.w, event.h):
-                    screen_size = event.w, event.h
-                screen = init_screen(*screen_size)
-                init_group(*screen_size)
+                    screen = init_screen(event.w, event.h)
+                    init_grid(event.w, event.h)
+                    burn_set.clear()
 
             elif event.type == pygame.QUIT:
                 running = False
 
-        update_grid()
-        grid.draw(screen)
-        screen.blit(logo, (0, 0), None, pygame.BLEND_RGBA_MULT)
+        update_burners()
+
+        # update and draw grid to the screen
+        screen_blit = screen.blit
+        for glyph in (i for i in glyphs if i.ttl):
+            # have random chance to change the glyph
+            if random() > .9:
+                glyph.index = randrange(len(charset))
+
+            # update the glyphs's life and image
+            # if it becomes 0, then it won't be updated next frame
+            glyph.ttl -= 1
+
+            # get image and draw it
+            screen_blit(cache[glyph.index][glyph.ttl], glyph.pos)
+
+        screen_blit(logo, (0, 0), None, pygame.BLEND_RGBA_MULT)
 
         if save_to_disk:
             filename = "snapshot%05d.tga" % frame_number
-            frame_number += 1
             pygame.image.save(screen, filename)
+            frame_number += 1
 
-        pygame.display.flip()
+        else:
+            pygame.display.flip()
 
 
 if __name__ == "__main__":
